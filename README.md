@@ -1,6 +1,6 @@
-# db-backup
+# ciwulan-snap
 
-Production-grade database backup to S3-compatible object storage. Run on any Linux VPS via cron, or spin up multiple backup containers with Docker Compose.
+Snapshot your databases to S3-compatible storage. Schedule it on any Linux VPS or run multiple backups in parallel with Docker Compose.
 
 **Pipeline:** `dump → compress → checksum → upload → retention → cleanup`
 
@@ -287,7 +287,7 @@ Restrict the API key to only what the backup script needs. Apply this policy to 
 ## File Structure
 
 ```
-db-backup/
+ciwulan-snap/
 ├── backup.py          # backup orchestrator
 ├── restore.py         # restore + integrity verification
 ├── lib.py             # shared: config, logging, S3 client, alerting
