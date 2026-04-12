@@ -20,19 +20,28 @@ echo "Script dir: $SCRIPT_DIR"
 
 # ── 1. Make scripts executable ─────────────────────────────────────────────────
 echo "[1/3] Setting permissions…"
-chmod +x "$SCRIPT_DIR/backup.sh" "$SCRIPT_DIR/restore.sh"
-echo "      backup.sh and restore.sh are now executable."
+chmod +x "$SCRIPT_DIR/backup.py" "$SCRIPT_DIR/restore.py"
+echo "      backup.py and restore.py are now executable."
 
 # ── 2. Check dependencies ──────────────────────────────────────────────────────
 echo "[2/3] Checking dependencies…"
 
 MISSING=()
 
-for cmd in aws jq curl gzip sha256sum bc; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    MISSING+=("$cmd")
-  fi
-done
+# Python 3 must be installed
+if ! command -v python3 >/dev/null 2>&1; then
+  MISSING+=("python3")
+fi
+
+# .venv must be set up with required packages
+if [ ! -f "$SCRIPT_DIR/.venv/bin/python" ]; then
+  echo ""
+  echo "      WARNING: Python virtual environment not found at $SCRIPT_DIR/.venv"
+  echo "      Set it up with:"
+  echo "        python3 -m venv $SCRIPT_DIR/.venv"
+  echo "        $SCRIPT_DIR/.venv/bin/pip install boto3 python-dotenv zstandard cryptography"
+  echo ""
+fi
 
 # Check at least one DB client is present
 if ! command -v pg_dump >/dev/null 2>&1 && ! command -v mysqldump >/dev/null 2>&1; then
@@ -45,7 +54,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   for m in "${MISSING[@]}"; do
     echo "        - $m"
   done
-  echo "      Install them before running backup.sh."
+  echo "      Install them before running backup.py."
   echo ""
 else
   echo "      All required dependencies found."
@@ -71,7 +80,7 @@ mkdir -p "$SCRIPT_DIR/logs"
 CRON_MINUTE=$(( RANDOM % 60 ))
 # Default: daily at 02:XX — adjust the hour here if needed.
 CRON_HOUR=2
-CRON_CMD="$SCRIPT_DIR/backup.sh >> $LOG_FILE 2>&1"
+CRON_CMD="$SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/backup.py >> $LOG_FILE 2>&1"
 CRON_ENTRY="${CRON_MINUTE} ${CRON_HOUR} * * * ${CRON_CMD}"
 CRON_MARKER="# db-backup managed cron"
 
@@ -95,6 +104,6 @@ echo ""
 echo "  3. Set up a least-privilege S3 IAM/API policy (allow only on your bucket/prefix):"
 echo "     Actions: s3:PutObject, s3:GetObject, s3:DeleteObject, s3:ListBucket"
 echo ""
-echo "  4. Test manually:  $SCRIPT_DIR/backup.sh"
-echo "  5. Verify restore: bash $SCRIPT_DIR/restore.sh --dry-run --s3 <s3_key>"
+echo "  4. Test manually:  $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/backup.py"
+echo "  5. Verify restore: $SCRIPT_DIR/.venv/bin/python $SCRIPT_DIR/restore.py --dry-run --s3 <s3_key>"
 echo "  6. Check crontab:  crontab -l"

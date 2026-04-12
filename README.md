@@ -22,13 +22,13 @@ Production-grade database backup to S3-compatible object storage. Runs on any Li
 
 ## Requirements
 
-- `bash` 4.0+
-- `aws` CLI v2
-- `jq`
-- `curl`
-- `gzip`
+- Python 3.9+
+- A Python virtual environment (`.venv`) with the following packages:
+  - `boto3` — S3 operations
+  - `python-dotenv` — `.env` loading
+  - `zstandard` — only if `COMPRESSION_ALGO=zstd`
+  - `cryptography` — reserved for future encryption support
 - `pg_dump` / `psql` (PostgreSQL) or `mysqldump` / `mysql` (MySQL/MariaDB)
-- `zstd` — only if `COMPRESSION_ALGO=zstd`
 - A bucket on any S3-compatible service
 
 ---
@@ -39,6 +39,10 @@ Production-grade database backup to S3-compatible object storage. Runs on any Li
 git clone <repo> db-backup
 cd db-backup
 
+# Create virtual environment and install dependencies
+python3 -m venv .venv
+.venv/bin/pip install boto3 python-dotenv zstandard cryptography
+
 # Check dependencies + register daily cron job
 ./install.sh
 
@@ -47,7 +51,7 @@ cp .env.example .env
 nano .env
 
 # Run manually to test
-./backup.sh
+.venv/bin/python backup.py
 ```
 
 ---
@@ -56,8 +60,8 @@ nano .env
 
 `install.sh` does four things:
 
-1. Makes `backup.sh` and `restore.sh` executable
-2. Checks that required system tools are installed
+1. Makes `backup.py` and `restore.py` executable
+2. Checks that Python 3 and the `.venv` are present, and that DB client tools are installed
 3. Copies `.env.example` → `.env` if no `.env` exists yet
 4. Registers a daily cron job with a **randomized minute** (avoids load spikes across servers)
 
@@ -93,17 +97,18 @@ cp .env.example .env
 | `S3_PREFIX` | Key prefix, e.g. `vps-hostname/` — useful when one bucket holds multiple servers |
 | `AWS_ACCESS_KEY_ID` | Access key |
 | `AWS_SECRET_ACCESS_KEY` | Secret key |
+| `AWS_DEFAULT_REGION` | Region. Use `auto` for Cloudflare R2 and other non-AWS providers. |
 
 **Provider endpoint examples:**
 
-| Provider | `S3_ENDPOINT_URL` |
-|---|---|
-| AWS S3 | *(leave empty)* |
-| Backblaze B2 | `https://s3.us-west-004.backblazeb2.com` |
-| Cloudflare R2 | `https://<account_id>.r2.cloudflarestorage.com` |
-| DigitalOcean Spaces | `https://<region>.digitaloceanspaces.com` |
-| Wasabi | `https://s3.wasabisys.com` |
-| MinIO (self-hosted) | `http://localhost:9000` |
+| Provider | `S3_ENDPOINT_URL` | `AWS_DEFAULT_REGION` |
+|---|---|---|
+| AWS S3 | *(leave empty)* | e.g. `us-east-1` |
+| Backblaze B2 | `https://s3.us-west-004.backblazeb2.com` | `auto` |
+| Cloudflare R2 | `https://<account_id>.r2.cloudflarestorage.com` | `auto` |
+| DigitalOcean Spaces | `https://<region>.digitaloceanspaces.com` | `auto` |
+| Wasabi | `https://s3.wasabisys.com` | `auto` |
+| MinIO (self-hosted) | `http://localhost:9000` | `auto` |
 
 ### Retention
 
@@ -158,20 +163,20 @@ Use this regularly as a restore drill — it decompresses the backup without tou
 
 ```bash
 # Local file
-bash restore.sh --dry-run /path/to/backup.sql.gz
+.venv/bin/python restore.py --dry-run /path/to/backup.sql.gz
 
 # Directly from S3
-bash restore.sh --dry-run --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+.venv/bin/python restore.py --dry-run --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
 ```
 
 ### Full restore to database
 
 ```bash
 # From a local file (will prompt for confirmation)
-bash restore.sh --restore /path/to/backup.sql.gz
+.venv/bin/python restore.py --restore /path/to/backup.sql.gz
 
 # From S3
-bash restore.sh --restore --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+.venv/bin/python restore.py --restore --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
 ```
 
 > **Warning:** `--restore` imports SQL into the live database. Ensure you have a target database ready and understand the impact before proceeding. The script will ask you to type `yes` to confirm.
@@ -228,8 +233,9 @@ Restrict the API key to only what the backup script needs. Apply this policy to 
 
 ```
 db-backup/
-├── backup.sh          # backup orchestrator
-├── restore.sh         # restore + integrity verification
+├── backup.py          # backup orchestrator
+├── restore.py         # restore + integrity verification
+├── lib.py             # shared: config, logging, S3 client, alerting
 ├── install.sh         # one-shot setup: deps check, cron
 ├── .env.example       # config template (copy to .env)
 ├── .gitignore
