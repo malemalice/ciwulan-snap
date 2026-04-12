@@ -1,6 +1,6 @@
 # db-backup
 
-Production-grade database backup to S3-compatible object storage. Runs on any Linux VPS via cron.
+Production-grade database backup to S3-compatible object storage. Run on any Linux VPS via cron, or spin up multiple backup containers with Docker Compose.
 
 **Pipeline:** `dump → compress → checksum → upload → retention → cleanup`
 
@@ -8,6 +8,7 @@ Production-grade database backup to S3-compatible object storage. Runs on any Li
 
 ## Features
 
+- **Docker Compose** — spin up one container per database; each has its own schedule and credentials
 - **Multi-database** — PostgreSQL, MySQL, MariaDB
 - **Any S3-compatible backend** — AWS S3, Backblaze B2, Cloudflare R2, Wasabi, DigitalOcean Spaces, MinIO
 - **SHA-256 integrity sidecar** — detect corruption or tampering before restore
@@ -52,6 +53,54 @@ nano .env
 
 # Run manually to test
 .venv/bin/python backup.py
+```
+
+---
+
+## Docker Quick Start
+
+The fastest way to run multiple database backups. Each service in `docker-compose.yml` is one independent backup with its own schedule and credentials.
+
+```bash
+git clone <repo> db-backup
+cd db-backup
+
+# Edit docker-compose.yml — fill in your DB credentials and S3 config
+# Then start all backup containers:
+docker compose up -d
+
+# Watch logs from all containers
+docker compose logs -f
+
+# Run a backup immediately (bypasses cron)
+docker compose run --rm backup-postgres-mydb python backup.py
+```
+
+### Adding more databases
+
+Copy any service block in `docker-compose.yml`, give it a unique name, and update the environment variables. Each service runs independently:
+
+```yaml
+  backup-postgres-analytics:
+    build: .
+    restart: unless-stopped
+    environment:
+      BACKUP_CRON: "0 3 * * *"   # offset from other services
+      DB_TYPE: postgres
+      DB_HOST: "analytics-db.example.com"
+      DB_NAME: analytics
+      # ... rest of config
+```
+
+For production, use `env_file:` instead of inline `environment:` to keep secrets out of `docker-compose.yml`:
+
+```yaml
+  backup-postgres-analytics:
+    build: .
+    restart: unless-stopped
+    env_file: ./envs/analytics.env   # gitignored per-service env file
+    volumes:
+      - ./logs/analytics:/app/logs
 ```
 
 ---
@@ -109,6 +158,12 @@ cp .env.example .env
 | DigitalOcean Spaces | `https://<region>.digitaloceanspaces.com` | `auto` |
 | Wasabi | `https://s3.wasabisys.com` | `auto` |
 | MinIO (self-hosted) | `http://localhost:9000` | `auto` |
+
+### Docker / Scheduling
+
+| Variable | Default | Description |
+|---|---|---|
+| `BACKUP_CRON` | `0 2 * * *` | Cron schedule used by the Docker entrypoint. Ignored when running via `install.sh`. |
 
 ### Retention
 
@@ -236,8 +291,12 @@ db-backup/
 ├── backup.py          # backup orchestrator
 ├── restore.py         # restore + integrity verification
 ├── lib.py             # shared: config, logging, S3 client, alerting
-├── install.sh         # one-shot setup: deps check, cron
-├── .env.example       # config template (copy to .env)
+├── install.sh         # one-shot setup for cron-based installs
+├── Dockerfile         # container image
+├── entrypoint.sh      # configures cron inside the container and starts it
+├── docker-compose.yml # example multi-service setup
+├── requirements.txt   # Python dependencies for pip install
+├── .env.example       # config template (copy to .env for cron install)
 ├── .gitignore
 ├── logs/              # rotating logs (auto-created)
 └── tmp/               # ephemeral staging (auto-cleaned)
@@ -250,7 +309,14 @@ db-backup/
 Logs are written to `logs/backup.log` (rotating, max 10 MB × 5 files) and to stdout.
 
 ```bash
+# Cron install
 tail -f logs/backup.log
+
+# Docker — live logs from one service
+docker compose logs -f backup-postgres-mydb
+
+# Docker — live logs from all services
+docker compose logs -f
 ```
 
 Example output:

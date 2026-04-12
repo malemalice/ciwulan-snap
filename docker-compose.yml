@@ -1,0 +1,73 @@
+version: "3.9"
+
+# Each service = one database backup. Add as many services as you need.
+# Copy an existing service block, rename it, and change the env vars.
+#
+# To run a manual backup immediately (bypasses cron):
+#   docker compose run --rm backup-postgres-mydb python backup.py
+#
+# To watch live logs:
+#   docker compose logs -f
+
+services:
+
+  # ── PostgreSQL example ──────────────────────────────────────────────────────
+  backup-postgres-mydb:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Cron schedule (default: daily at 02:00 UTC)
+      # Examples: "0 */6 * * *" (every 6h) | "30 1 * * 0" (weekly Sunday 01:30)
+      BACKUP_CRON: "0 2 * * *"
+      DB_TYPE: postgres
+      DB_HOST: "your-postgres-host"
+      DB_PORT: "5432"
+      DB_NAME: mydb
+      DB_USER: backup_user
+      DB_PASSWORD: "changeme"
+      # Leave S3_ENDPOINT_URL empty for AWS S3; set for R2/B2/Spaces/MinIO
+      S3_ENDPOINT_URL: ""
+      S3_BUCKET: my-db-backups
+      S3_PREFIX: "server1/postgres/"
+      AWS_ACCESS_KEY_ID: "YOUR_KEY_ID"
+      AWS_SECRET_ACCESS_KEY: "YOUR_SECRET"
+      AWS_DEFAULT_REGION: auto
+      RETENTION_DAYS: "30"
+      COMPRESSION_ALGO: gzip
+    volumes:
+      - ./logs/postgres:/app/logs
+      - ./tmp/postgres:/app/tmp
+
+  # ── MySQL example (offset 30 min to avoid simultaneous S3 uploads) ──────────
+  backup-mysql-appdb:
+    build: .
+    restart: unless-stopped
+    environment:
+      BACKUP_CRON: "30 2 * * *"
+      DB_TYPE: mysql
+      DB_HOST: "your-mysql-host"
+      DB_PORT: "3306"
+      DB_NAME: appdb
+      DB_USER: backup_user
+      DB_PASSWORD: "changeme"
+      S3_ENDPOINT_URL: ""
+      S3_BUCKET: my-db-backups
+      S3_PREFIX: "server1/mysql/"
+      AWS_ACCESS_KEY_ID: "YOUR_KEY_ID"
+      AWS_SECRET_ACCESS_KEY: "YOUR_SECRET"
+      AWS_DEFAULT_REGION: auto
+      RETENTION_DAYS: "30"
+      COMPRESSION_ALGO: gzip
+    volumes:
+      - ./logs/mysql:/app/logs
+      - ./tmp/mysql:/app/tmp
+
+  # ── env_file alternative (recommended for production — keeps secrets out of
+  #    this file; create envs/extra-db.env and add it to .gitignore) ───────────
+  # backup-extra-db:
+  #   build: .
+  #   restart: unless-stopped
+  #   env_file: ./envs/extra-db.env
+  #   volumes:
+  #     - ./logs/extra:/app/logs
+  #     - ./tmp/extra:/app/tmp
