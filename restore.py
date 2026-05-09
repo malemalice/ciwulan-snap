@@ -148,22 +148,23 @@ def drop_and_recreate_db(config: dict, logger) -> None:
     db_name = config["db_name"]
     logger.info("Terminating connections and dropping database '%s'…", db_name)
     env = {**os.environ, "PGPASSWORD": config["db_password"]}
-    sql = (
-        f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-        f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"
-        f"DROP DATABASE IF EXISTS \"{db_name}\";"
-        f"CREATE DATABASE \"{db_name}\";"
-    )
-    cmd = [
+    base_cmd = [
         "psql",
         "-h", config["db_host"],
         "-p", str(config["db_port"]),
         "-U", config["db_user"],
         "-d", "postgres",
-        "-c", sql,
+    ]
+    # Each statement is a separate -c call. psql wraps a single multi-statement
+    # -c in an implicit transaction, and DROP DATABASE cannot run inside one.
+    statements = [
+        f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid();",
+        f'DROP DATABASE IF EXISTS "{db_name}";',
+        f'CREATE DATABASE "{db_name}";',
     ]
     try:
-        subprocess.run(cmd, env=env, check=True)
+        for stmt in statements:
+            subprocess.run(base_cmd + ["-c", stmt], env=env, check=True)
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"Failed to drop/recreate database '{db_name}'.") from exc
     logger.info("Database '%s' recreated.", db_name)

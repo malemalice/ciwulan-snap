@@ -189,12 +189,14 @@ drop_and_recreate_db() {
   [ "$db_type" != "postgres" ] && return 0
 
   log INFO "Terminating connections and dropping database '$DB_NAME'…"
-  PGPASSWORD="$DB_PASSWORD" psql \
-    -h "$DB_HOST" \
-    -p "$DB_PORT" \
-    -U "$DB_USER" \
-    -d postgres \
-    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid(); DROP DATABASE IF EXISTS \"$DB_NAME\"; CREATE DATABASE \"$DB_NAME\";"
+  # Each statement is a separate -c call. psql wraps a single multi-statement
+  # -c in an implicit transaction, and DROP DATABASE cannot run inside one.
+  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();"
+  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"$DB_NAME\";"
+  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+    -c "CREATE DATABASE \"$DB_NAME\";"
   log INFO "Database '$DB_NAME' recreated."
 }
 
