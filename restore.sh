@@ -184,6 +184,20 @@ decompress() {
 
 # ── Restore to DB ──────────────────────────────────────────────────────────────
 
+drop_and_recreate_db() {
+  local db_type="${DB_TYPE,,}"
+  [ "$db_type" != "postgres" ] && return 0
+
+  log INFO "Terminating connections and dropping database '$DB_NAME'…"
+  PGPASSWORD="$DB_PASSWORD" psql \
+    -h "$DB_HOST" \
+    -p "$DB_PORT" \
+    -U "$DB_USER" \
+    -d postgres \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid(); DROP DATABASE IF EXISTS \"$DB_NAME\"; CREATE DATABASE \"$DB_NAME\";"
+  log INFO "Database '$DB_NAME' recreated."
+}
+
 restore_to_db() {
   local sql_path="$1"
   local db_type="${DB_TYPE,,}"
@@ -246,7 +260,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # Full restore
-log WARN "About to restore into database '$DB_NAME' on $DB_HOST. This may overwrite data."
+log WARN "About to DROP and recreate database '$DB_NAME' on $DB_HOST, then import the backup. All existing data will be permanently lost."
 printf "Type 'yes' to proceed: "
 read -r confirm
 if [ "$confirm" != "yes" ]; then
@@ -254,4 +268,5 @@ if [ "$confirm" != "yes" ]; then
   exit 0
 fi
 
+drop_and_recreate_db
 restore_to_db "$sql_file"

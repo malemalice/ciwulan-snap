@@ -236,34 +236,62 @@ Use this regularly as a restore drill — it decompresses the backup without tou
 
 > **Warning:** `--restore` imports SQL into the live database. Ensure you have a target database ready and understand the impact before proceeding. The script will ask you to type `yes` to confirm.
 
+### Interactive restore picker
+
+`pick.py` lists all available backups and lets you choose one interactively — no need to look up the exact S3 key first.
+
+```bash
+# Cron install
+.venv/bin/python pick.py
+
+# Local files
+.venv/bin/python pick.py --local /path/to/backups
+```
+
+Example session:
+
+```
+Fetching backup list from s3://my-bucket/vps-hostname/ …
+
+  #   Filename                                         Size  Last Modified
+  ─── ─────────────────────────────────────────────── ──────── ───────────────────
+    1  vps-hostname/mydb_2024-01-15_02-37-00.sql.gz    8.7 MB  2024-01-15 02:37 UTC
+    2  vps-hostname/mydb_2024-01-14_02-37-00.sql.gz    8.6 MB  2024-01-14 02:37 UTC
+    3  vps-hostname/mydb_2024-01-13_02-37-00.sql.gz    8.5 MB  2024-01-13 02:37 UTC
+
+Enter number [1-3] (or q to quit): 1
+
+Selected: vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+
+  Mode:
+    1) dry-run  — verify integrity only, no database changes
+    2) restore  — full restore (DESTRUCTIVE)
+
+Choose mode [1/2] (or q to quit): 2
+
+WARNING: This will import 'mydb_2024-01-15_02-37-00.sql.gz' into database 'mydb'.
+Type 'yes' to proceed: yes
+```
+
 ### Restoring with Docker
 
 If you have a running backup container, run restore commands inside it with `docker exec` — the container already has all credentials and S3 config loaded from its environment.
 
-**Step 1 — find the backup file to restore**
-
-Check the container logs for the uploaded S3 path:
+**Interactive picker (recommended)**
 
 ```bash
-docker logs backup-postgres-mydb | grep "Uploaded"
-# [INFO] Uploaded: vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+docker exec -it backup-postgres-mydb python pick.py
 ```
 
-Or list all available backups directly from the container (uses the container's S3 credentials):
+This lists all backups in S3 and walks you through the restore steps interactively.
+
+**Manual restore (if you already know the S3 key)**
 
 ```bash
-docker exec backup-postgres-mydb aws s3 ls s3://your-bucket-name/vps-hostname/
-```
-
-**Step 2 — verify integrity (dry run, no DB changes)**
-
-```bash
+# Verify integrity only
 docker exec -it backup-postgres-mydb python restore.py --dry-run --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
-```
 
-**Step 3 — full restore to database**
-
-```bash
+# Full restore
 docker exec -it backup-postgres-mydb python restore.py --restore --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
 ```
 
@@ -325,6 +353,7 @@ Restrict the API key to only what the backup script needs. Apply this policy to 
 ciwulan-snap/
 ├── backup.py          # backup orchestrator
 ├── restore.py         # restore + integrity verification
+├── pick.py            # interactive restore picker (lists S3/local backups)
 ├── lib.py             # shared: config, logging, S3 client, alerting
 ├── install.sh         # one-shot setup for cron-based installs
 ├── Dockerfile         # container image

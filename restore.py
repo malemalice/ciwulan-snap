@@ -143,6 +143,31 @@ def decompress(path: Path, logger) -> Path:
 
 # ── DB restore ────────────────────────────────────────────────────────────────
 
+def drop_and_recreate_db(config: dict, logger) -> None:
+    db_name = config["db_name"]
+    logger.info("Terminating connections and dropping database '%s'…", db_name)
+    env = {**os.environ, "PGPASSWORD": config["db_password"]}
+    sql = (
+        f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+        f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"
+        f"DROP DATABASE IF EXISTS \"{db_name}\";"
+        f"CREATE DATABASE \"{db_name}\";"
+    )
+    cmd = [
+        "psql",
+        "-h", config["db_host"],
+        "-p", str(config["db_port"]),
+        "-U", config["db_user"],
+        "-d", "postgres",
+        "-c", sql,
+    ]
+    try:
+        subprocess.run(cmd, env=env, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Failed to drop/recreate database '{db_name}'.") from exc
+    logger.info("Database '%s' recreated.", db_name)
+
+
 def restore_to_db(config: dict, sql_path: Path, logger) -> None:
     logger.info("Restoring '%s' to %s database '%s'…", sql_path.name, config["db_type"], config["db_name"])
 
@@ -226,13 +251,15 @@ def main() -> None:
             return
 
         # Full restore — require explicit confirmation
-        print(f"\nWARNING: This will import '{backup_file.name}' into database '{config['db_name']}'.")
-        print("This operation cannot be undone.\n")
+        print(f"\nWARNING: This will DROP and recreate database '{config['db_name']}',")
+        print(f"then import '{backup_file.name}'. All existing data will be permanently lost.\n")
         confirm = input("Type 'yes' to proceed: ").strip()
         if confirm != "yes":
             logger.info("Restore aborted by user.")
             sys.exit(0)
 
+        if config["db_type"] == "postgres":
+            drop_and_recreate_db(config, logger)
         restore_to_db(config, sql_path, logger)
 
     except Exception as exc:
