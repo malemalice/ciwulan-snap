@@ -232,6 +232,7 @@ def main() -> None:
     from restore import (
         decompress,
         download_from_s3,
+        drop_and_recreate_db,
         restore_to_db,
         verify_checksum,
     )
@@ -265,13 +266,15 @@ def main() -> None:
             return
 
         # Full restore — require explicit confirmation
-        print(f"\nWARNING: This will import '{backup_file.name}' into database '{config['db_name']}'.")
-        print("This operation cannot be undone.\n")
+        print(f"\nWARNING: This will DROP and recreate database '{config['db_name']}',")
+        print(f"then import '{backup_file.name}'. All existing data will be permanently lost.\n")
         confirm = _prompt("Type 'yes' to proceed: ")
         if confirm != "yes":
             logger.info("Restore aborted by user.")
             sys.exit(0)
 
+        if config["db_type"] == "postgres":
+            drop_and_recreate_db(config, logger)
         restore_to_db(config, sql_path, logger)
 
     except Exception as exc:

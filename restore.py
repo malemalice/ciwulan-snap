@@ -21,6 +21,7 @@ Usage:
 import argparse
 import gzip
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -172,7 +173,6 @@ def restore_to_db(config: dict, sql_path: Path, logger) -> None:
     logger.info("Restoring '%s' to %s database '%s'…", sql_path.name, config["db_type"], config["db_name"])
 
     if config["db_type"] == "postgres":
-        import os
         cmd = [
             "psql",
             "-h", config["db_host"],
