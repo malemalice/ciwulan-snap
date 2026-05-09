@@ -100,6 +100,8 @@ def run_dump(config: dict, tmp_dir: Path, logger) -> Path:
             "--no-tablespaces",
             "--no-owner",
             "--no-privileges",
+            "--clean",
+            "--if-exists",
             "-F", "p",
             "-f", str(dump_path),
             config["db_name"],

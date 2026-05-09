@@ -136,6 +136,8 @@ run_dump() {
       --no-tablespaces \
       --no-owner \
       --no-privileges \
+      --clean \
+      --if-exists \
       -F p \
       -f "$dump_path" \
       "$DB_NAME"
