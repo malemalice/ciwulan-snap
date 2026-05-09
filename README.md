@@ -236,6 +236,41 @@ Use this regularly as a restore drill — it decompresses the backup without tou
 
 > **Warning:** `--restore` imports SQL into the live database. Ensure you have a target database ready and understand the impact before proceeding. The script will ask you to type `yes` to confirm.
 
+### Restoring with Docker
+
+If you have a running backup container, run restore commands inside it with `docker exec` — the container already has all credentials and S3 config loaded from its environment.
+
+**Step 1 — find the backup file to restore**
+
+Check the container logs for the uploaded S3 path:
+
+```bash
+docker logs backup-postgres-mydb | grep "Uploaded"
+# [INFO] Uploaded: vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+```
+
+Or list all available backups directly from the container (uses the container's S3 credentials):
+
+```bash
+docker exec backup-postgres-mydb aws s3 ls s3://your-bucket-name/vps-hostname/
+```
+
+**Step 2 — verify integrity (dry run, no DB changes)**
+
+```bash
+docker exec -it backup-postgres-mydb python restore.py --dry-run --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+```
+
+**Step 3 — full restore to database**
+
+```bash
+docker exec -it backup-postgres-mydb python restore.py --restore --s3 vps-hostname/mydb_2024-01-15_02-37-00.sql.gz
+```
+
+Replace `backup-postgres-mydb` with the name of your running container (`docker ps` to list them).
+
+> **Warning:** `--restore` imports SQL into the live database. Ensure you have a target database ready and understand the impact before proceeding. The script will ask you to type `yes` to confirm.
+
 ---
 
 ## Least-Privilege Setup
