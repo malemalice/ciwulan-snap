@@ -6,3 +6,5 @@ tmp/
 __pycache__/
 *.pyc
 *.pyo
+metallica_ci_key
+metallica_ci_key.pub
